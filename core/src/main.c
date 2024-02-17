@@ -7,29 +7,22 @@
 
 #include "buzzer.h"
 
-#include "timer.h"
-
 #include "led_strip.h"
 
 #include "stm32f1xx_hal.h"
 
 /** Definitions --------------------------------------------------- */
 /**
- * @brief Times.
- * 
- * Timer counter is incremented every 100us.
- * 
+ * @brief Update time.
  * @{
  */
-#define LED_UPDATE_TIME         50
-#define BUZZER_NOTE_TIME        1000
+#define LED_UPDATE_TIME_MS      5
+#define BUZZER_NOTE_TIME_MS     100
 /** @} */
 
 /** Types --------------------------------------------------------- */
 
 /** Variables ----------------------------------------------------- */
-static volatile uint32_t timer_counter = 0;
-
 static buzzer_note_t sheet_music[] = {
     BUZZER_NOTE_E4, BUZZER_NOTE_ST, BUZZER_NOTE_E4, BUZZER_NOTE_ST,
     BUZZER_NOTE_E4, BUZZER_NOTE_E4, BUZZER_NOTE_E4, BUZZER_NOTE_ST,
@@ -52,30 +45,9 @@ static buzzer_note_t sheet_music[] = {
 };
 
 /** Prototypes ---------------------------------------------------- */
-static void timer_callback(void);
-static bool timer_check_timeout(uint32_t timeshot, uint32_t timeout);
 static void clock_config(void);
 
 /** Internal functions -------------------------------------------- */
-/**
- * @brief Timer callback.
- * 
- * Executed every 100us.
- */
-static void timer_callback(void) {
-    timer_counter++;
-}
-
-static bool timer_check_timeout(uint32_t timeshot, uint32_t timeout) {
-    volatile uint32_t time_diff = timer_counter - timeshot;
-
-    if (time_diff >= timeout) {
-        return true;
-    }
-
-    return false;
-}
-
 /**
  * @brief MCU clock configuration.
  */
@@ -113,21 +85,17 @@ int main(void) {
     clock_config();
 
     buzzer_setup();
-
-    timer_setup(TIMER_1, 71, 99);
-    timer_attach_callback(TIMER_1, timer_callback);
-
     led_setup();
 
     while (true) {
-        if (timer_check_timeout(led_update_timeshot, LED_UPDATE_TIME) == true) {
-            led_update_timeshot = timer_counter;
+        if (HAL_GetTick() - led_update_timeshot >= LED_UPDATE_TIME_MS) {
+            led_update_timeshot = HAL_GetTick();
 
             led_update();
         }
 
-        if (timer_check_timeout(buzzer_timeshot, BUZZER_NOTE_TIME) == true) {
-            buzzer_timeshot = timer_counter;
+        if (HAL_GetTick() - buzzer_timeshot >= BUZZER_NOTE_TIME_MS) {
+            buzzer_timeshot = HAL_GetTick();
 
             buzzer_play_note(sheet_music[note_idx]);
 
