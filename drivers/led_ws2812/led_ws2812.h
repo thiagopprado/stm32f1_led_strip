@@ -7,8 +7,6 @@
 #ifndef LED_WS2812_H
 #define LED_WS2812_H
 
-#include "gpio.h"
-
 #include <stdint.h>
 
 /**
@@ -17,8 +15,9 @@
  * @note Changing these values require changing the DMA channel beeing used.
  * @{
  */
-#define LED_WS2812_PORT         GPIO_PORTB
-#define LED_WS2812_PIN          1
+#define LED_WS2812_GPIO_EN()    __HAL_RCC_GPIOB_CLK_ENABLE()
+#define LED_WS2812_PORT         GPIOB
+#define LED_WS2812_PIN          GPIO_PIN_1
 #define LED_WS2812_TIMER        TIMER_3
 #define LED_WS2812_PWM_CH       TIMER_CH_4
 /** @} */

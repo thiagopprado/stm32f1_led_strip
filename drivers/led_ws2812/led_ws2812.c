@@ -13,6 +13,8 @@
 #include "stm32f1xx.h"
 #include "core_cm3.h"
 
+#include "stm32f1xx_hal.h"
+
 #define BIT_CHECK(value, bit)       ((value >> bit) & 0x01)
 #define BIT_SET(value, bit)         (value |= 1 << bit)
 #define BIT_CLEAR(value, bit)       (value &= ~(1 << bit))
@@ -80,7 +82,15 @@ void led_ws2812_setup(void) {
         return;
     }
 
-    gpio_setup(LED_WS2812_PORT, LED_WS2812_PIN, GPIO_MODE_OUTPUT_50, GPIO_CFG_OUT_AF_OPEN_DRAIN);
+    LED_WS2812_GPIO_EN();
+
+    GPIO_InitTypeDef gpio_init = { 0 };
+    gpio_init.Pin = LED_WS2812_PIN;
+    gpio_init.Mode = GPIO_MODE_AF_OD;
+    gpio_init.Pull = GPIO_NOPULL;
+    gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(LED_WS2812_PORT, &gpio_init);
+
     timer_setup(LED_WS2812_TIMER, LED_WS2812_PSC, LED_WS2812_ARR);
     timer_pwm_setup(LED_WS2812_TIMER, LED_WS2812_PWM_CH);
     

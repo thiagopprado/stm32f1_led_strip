@@ -6,8 +6,9 @@
 
 #include "led_ws2812.h"
 
-#include "gpio.h"
 #include "infrared.h"
+
+#include "stm32f1xx_hal.h"
 
 /** Definitions --------------------------------------------------- */
 #define LED_FADE_BRIGHT_STEP_SLOW   1
@@ -375,8 +376,14 @@ void led_setup(void)
     infrared_setup();
     led_ws2812_setup();
 
-    gpio_setup(GPIO_PORTB, 7, GPIO_MODE_INPUT, GPIO_CFG_IN_PULL);
-    gpio_write(GPIO_PORTB, 7, GPIO_STATE_HIGH); // Pull up
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    GPIO_InitTypeDef gpio_init = { 0 };
+    gpio_init.Pin = GPIO_PIN_7;
+    gpio_init.Mode = GPIO_MODE_INPUT;
+    gpio_init.Pull = GPIO_PULLUP;
+    gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOB, &gpio_init);
 }
 
 /**
@@ -386,9 +393,9 @@ void led_update(void) {
     static uint32_t ir_read_cooldown = 0;
     ir_key_id_t key_pressed = infrared_decode();
 
-    static bool last_key_state = true;
+    static bool last_key_state = false;
     static uint32_t key_hold_cnt = 0;
-    bool key_state = gpio_read(GPIO_PORTB, 7);
+    bool key_state = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == GPIO_PIN_RESET;
 
     memset(led_color, 0, sizeof(led_color));
 
@@ -396,11 +403,11 @@ void led_update(void) {
         ir_read_cooldown--;
     }
 
-    if (last_key_state == false && key_state == true && key_hold_cnt < KEY_HOLD_COUNTER) {
+    if (last_key_state == true && key_state == false && key_hold_cnt < KEY_HOLD_COUNTER) {
         key_pressed = INFRARED_KEY_RIGHT;
     }
 
-    if (key_state == false) {
+    if (key_state == true) {
         key_hold_cnt++;
         if (key_hold_cnt == KEY_HOLD_COUNTER) {
             key_pressed = INFRARED_KEY_ENTER;
