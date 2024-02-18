@@ -66,7 +66,8 @@ typedef enum {
 } led_snake_state_t;
 
 typedef enum {
-    LED_EFFECT_RED = 0,
+    LED_EFFECT_OFF = 0,
+    LED_EFFECT_RED,
     LED_EFFECT_GREEN,
     LED_EFFECT_BLUE,
     LED_EFFECT_YELLOW,
@@ -86,7 +87,7 @@ static led_color_mode_t led_color_mode = LED_COLOR_MODE_STATIC;
 static led_pulse_dir_t led_pulse_dir = LED_PULSE_UP;
 static int32_t led_pulse_bright = 0;
 
-static led_effect_t led_effect = LED_EFFECT_RED;
+static led_effect_t led_effect = LED_EFFECT_OFF;
 
 static led_xmas_t led_xmas_state = LED_XMAS_FADE;
 
@@ -146,6 +147,10 @@ static void led_effect_color(led_effect_t effect) {
 
     for (i = 0; i < LED_WS2812_NR; i++) {
         switch (led_effect) {
+            case LED_EFFECT_OFF: {
+                led_color[i] = 0;
+                break;
+            }
             case LED_EFFECT_RED: {
                 led_color[i] = LED_WS2812_GET_R(color_bright);
                 break;
@@ -420,7 +425,7 @@ void led_update(void) {
 
     if (key_pressed == INFRARED_KEY_RIGHT && ir_read_cooldown == 0) {
         if (led_effect == LED_EFFECT_XMAS) {
-            led_effect = LED_EFFECT_RED;
+            led_effect = LED_EFFECT_OFF;
         } else {
             led_effect++;
         }
@@ -428,7 +433,7 @@ void led_update(void) {
         ir_read_cooldown = LED_CONTROL_DELAY_FAST;
 
     } else if (key_pressed == INFRARED_KEY_LEFT && ir_read_cooldown == 0) {
-        if (led_effect == LED_EFFECT_RED) {
+        if (led_effect == LED_EFFECT_OFF) {
             led_effect = LED_EFFECT_XMAS;
         } else {
             led_effect--;
@@ -461,6 +466,7 @@ void led_update(void) {
     }
 
     switch (led_effect) {
+        case LED_EFFECT_OFF:
         case LED_EFFECT_RED:
         case LED_EFFECT_GREEN:
         case LED_EFFECT_BLUE:
