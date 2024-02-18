@@ -15,11 +15,18 @@
  * @note Changing these values require changing the DMA channel beeing used.
  * @{
  */
-#define LED_WS2812_GPIO_EN()    __HAL_RCC_GPIOB_CLK_ENABLE()
-#define LED_WS2812_PORT         GPIOB
-#define LED_WS2812_PIN          GPIO_PIN_1
-#define LED_WS2812_TIMER        TIMER_3
-#define LED_WS2812_PWM_CH       TIMER_CH_4
+#define LED_WS2812_GPIO_EN()        __HAL_RCC_GPIOB_CLK_ENABLE()
+#define LED_WS2812_PORT             GPIOB
+#define LED_WS2812_PIN              GPIO_PIN_1
+
+#define LED_WS2812_TIMER_EN()       __HAL_RCC_TIM3_CLK_ENABLE()
+#define LED_WS2812_TIMER            TIM3
+#define LED_WS2812_PWM_CH           TIM_CHANNEL_4
+
+#define LED_WS2812_DMA_EN()         __HAL_RCC_DMA1_CLK_ENABLE()
+#define LED_WS2812_DMA_IRQN         DMA1_Channel3_IRQn
+#define LED_WS2812_DMA_INSTANCE     DMA1_Channel3
+#define LED_WS2812_DMA_PRIORITY     2
 /** @} */
 
 #if !defined (LED_WS2812_NR)

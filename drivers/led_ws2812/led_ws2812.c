@@ -4,17 +4,20 @@
  * @brief Infrared module implementation.
  * 
  */
+/* Includes ------------------------------------------------------------------*/
 #include "led_ws2812.h"
 
+#include <stdbool.h>
 #include <stddef.h>
-
-#include "timer.h"
 
 #include "stm32f1xx.h"
 #include "core_cm3.h"
 
 #include "stm32f1xx_hal.h"
 
+/* Private types -------------------------------------------------------------*/
+
+/* Private defines -----------------------------------------------------------*/
 #define BIT_CHECK(value, bit)       ((value >> bit) & 0x01)
 #define BIT_SET(value, bit)         (value |= 1 << bit)
 #define BIT_CLEAR(value, bit)       (value &= ~(1 << bit))
@@ -42,33 +45,29 @@
  */
 #define LED_WS2812_PWM_BUFFER_SZ    ((LED_WS2812_BITS_NR * LED_WS2812_NR) + 1)    
 
+/* Private variables ---------------------------------------------------------*/
+static TIM_HandleTypeDef timer_handle = { 0 };
+static DMA_HandleTypeDef dma_handle = { 0 };
+
 static uint16_t led_pwm_buffer[LED_WS2812_PWM_BUFFER_SZ] = { 0 };
+static volatile bool trx_in_progress = false;
 
-/**
- * @brief Waits for DMA to finish the current transmission;
- */
-static void led_ws2812_pwm_wait_transmission(void) {
-    while ((DMA1_Channel3->CCR & DMA_CCR_EN) != 0);
-}
+/* Private function prototypes -----------------------------------------------*/
+static void pwm_pulse_finished_callback(TIM_HandleTypeDef *htim);
 
+/* Private function implementation--------------------------------------------*/
 /**
- * @brief Starts the next DMA transmission;
+ * @brief DMA transmission complete callback.
  * 
- * @param trx_len   Transmission length.
+ * @param htim  Timer handle.
  */
-static void led_ws2812_pwm_init_transmission(uint32_t trx_len) {
-    TIM_TypeDef *timer_ptr = timer_get_ptr(LED_WS2812_TIMER);
-
-    if (timer_ptr == NULL) {
-        return;
-    }
-
-    timer_ptr->EGR |= TIM_EGR_UG;
-
-    DMA1_Channel3->CNDTR = trx_len;
-    DMA1_Channel3->CCR |= DMA_CCR_EN;
+static void pwm_pulse_finished_callback(TIM_HandleTypeDef *htim)
+{
+    HAL_TIM_PWM_Stop_DMA(htim, LED_WS2812_PWM_CH);
+    trx_in_progress = false;
 }
 
+/* Public functions ----------------------------------------------------------*/
 /**
  * @brief Sets up LED ws2812 driver.
  * 
@@ -76,58 +75,48 @@ static void led_ws2812_pwm_init_transmission(uint32_t trx_len) {
  * The duty cycle is updated via DMA.
  */
 void led_ws2812_setup(void) {
-    TIM_TypeDef *timer_ptr = timer_get_ptr(LED_WS2812_TIMER);
-
-    if (timer_ptr == NULL) {
-        return;
-    }
-
-    LED_WS2812_GPIO_EN();
-
     GPIO_InitTypeDef gpio_init = { 0 };
+
+    // GPIO
+    LED_WS2812_GPIO_EN();
     gpio_init.Pin = LED_WS2812_PIN;
     gpio_init.Mode = GPIO_MODE_AF_OD;
     gpio_init.Pull = GPIO_NOPULL;
     gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
     HAL_GPIO_Init(LED_WS2812_PORT, &gpio_init);
 
-    timer_setup(LED_WS2812_TIMER, LED_WS2812_PSC, LED_WS2812_ARR);
-    timer_pwm_setup(LED_WS2812_TIMER, LED_WS2812_PWM_CH);
-    
-    // DMA1
-    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
-    DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 | DMA_CCR_PSIZE_0 | DMA_CCR_MINC | DMA_CCR_DIR | DMA_CCR_TCIE;
-    DMA1_Channel3->CMAR = (uint32_t)led_pwm_buffer;
+    HAL_NVIC_SetPriority(LED_WS2812_DMA_IRQN, LED_WS2812_DMA_PRIORITY, 0);
+    HAL_NVIC_EnableIRQ(LED_WS2812_DMA_IRQN);
 
-    // Enable compare channel DMA request
-    switch (LED_WS2812_PWM_CH) {
-        case TIMER_CH_1: {
-            timer_ptr->DIER |= TIM_DIER_CC1DE;
-            DMA1_Channel3->CPAR = (uint32_t)&(timer_ptr->CCR1);
-            break;
-        }
-        case TIMER_CH_2: {
-            timer_ptr->DIER |= TIM_DIER_CC2DE;
-            DMA1_Channel3->CPAR = (uint32_t)&(timer_ptr->CCR2);
-            break;
-        }
-        case TIMER_CH_3: {
-            timer_ptr->DIER |= TIM_DIER_CC3DE;
-            DMA1_Channel3->CPAR = (uint32_t)&(timer_ptr->CCR3);
-            break;
-        }
-        case TIMER_CH_4: {
-            timer_ptr->DIER |= TIM_DIER_CC4DE;
-            DMA1_Channel3->CPAR = (uint32_t)&(timer_ptr->CCR4);
-            break;
-        }
-        default: {
-            break;
-        }
-    }
+    // DMA
+    LED_WS2812_DMA_EN();
+    dma_handle.Instance = LED_WS2812_DMA_INSTANCE;
+    dma_handle.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    dma_handle.Init.PeriphInc = DMA_PINC_DISABLE;
+    dma_handle.Init.MemInc = DMA_MINC_ENABLE;
+    dma_handle.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    dma_handle.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    dma_handle.Init.Mode = DMA_NORMAL;
+    dma_handle.Init.Priority = DMA_PRIORITY_VERY_HIGH;
+    HAL_DMA_Init(&dma_handle);
 
-    NVIC_EnableIRQ(DMA1_Channel3_IRQn);
-    NVIC_SetPriority(DMA1_Channel3_IRQn, 0);
+    dma_handle.Parent = &timer_handle;
+
+    // PWM Timer
+    LED_WS2812_TIMER_EN();
+    timer_handle.Instance = LED_WS2812_TIMER;
+    timer_handle.Init.Prescaler = LED_WS2812_PSC;
+    timer_handle.Init.Period = LED_WS2812_ARR;
+    timer_handle.Init.CounterMode = TIM_COUNTERMODE_UP;
+    timer_handle.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    timer_handle.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+    timer_handle.hdma[TIM_DMA_ID_CC4] = &dma_handle;
+    HAL_TIM_PWM_Init(&timer_handle);
+    HAL_TIM_RegisterCallback(&timer_handle, HAL_TIM_PWM_PULSE_FINISHED_CB_ID, pwm_pulse_finished_callback);
+
+    TIM_OC_InitTypeDef pwm_config = { 0 };
+    pwm_config.OCMode = TIM_OCMODE_PWM1;
+    HAL_TIM_PWM_ConfigChannel(&timer_handle, &pwm_config, LED_WS2812_PWM_CH);
 }
 
 /**
@@ -137,15 +126,12 @@ void led_ws2812_setup(void) {
  * @param led_nr    Number of LEDs to be updated.
  */
 void led_ws2812_write(uint32_t *color, uint16_t led_nr) {
-    uint16_t led_idx = 0;
     uint32_t pwm_idx = 0;
 
-    led_ws2812_pwm_wait_transmission();
+    while (trx_in_progress == true);
 
-    for (led_idx = 0; led_idx < led_nr; led_idx++) {
-        int32_t i;
-
-        for (i = (LED_WS2812_BITS_NR - 1); i >= 0; i--) {
+    for (uint16_t led_idx = 0; led_idx < led_nr; led_idx++) {
+        for (int32_t i = (LED_WS2812_BITS_NR - 1); i >= 0; i--) {
             if (BIT_CHECK(color[led_idx], i) == 0) {
                 led_pwm_buffer[pwm_idx++] = LED_WS2812_DUTY_CYCLE_BIT_0;
             } else {
@@ -157,12 +143,13 @@ void led_ws2812_write(uint32_t *color, uint16_t led_nr) {
     led_pwm_buffer[pwm_idx++] = 0;
 
     // Init transmission
-    led_ws2812_pwm_init_transmission(pwm_idx);
+    trx_in_progress = true;
+    HAL_TIM_PWM_Start_DMA(&timer_handle, LED_WS2812_PWM_CH, (uint32_t*)led_pwm_buffer, pwm_idx);
 }
 
+/**
+ * @brief PWM DMA ISR.
+ */
 void DMA1_Channel3_IRQHandler(void) {
-    NVIC_ClearPendingIRQ(DMA1_Channel3_IRQn);
-
-    DMA1->IFCR |= DMA_IFCR_CGIF3;
-    DMA1_Channel3->CCR &= ~(DMA_CCR_EN);
+    HAL_DMA_IRQHandler(&dma_handle);
 }
