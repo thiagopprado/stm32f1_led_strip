@@ -25,6 +25,9 @@
 
 #define KEY_HOLD_COUNTER            200
 
+#define LED_CONFIG_ADDR             0x0800FC00
+#define LED_CONFIG_SAVE_DELAY       2000
+
 /** Types --------------------------------------------------------- */
 typedef enum {
     LED_COLOR_MODE_STATIC = 0,
@@ -105,6 +108,8 @@ static void led_effect_color(led_effect_t effect);
 static void led_effect_xmas(void);
 static bool led_xmas_fade(void);
 static bool led_xmas_snake(void);
+static void load_config(void);
+static void save_config(void);
 
 /** Internal functions -------------------------------------------- */
 /**
@@ -372,6 +377,62 @@ static bool led_xmas_snake(void) {
     return effect_finish;
 }
 
+/**
+ * @brief Load configurations from flash.
+ */
+static void load_config(void)
+{
+    uint64_t stored_config = *((uint64_t *)(LED_CONFIG_ADDR));
+
+    led_effect = stored_config & 0x000000FF;
+    if (led_effect > LED_EFFECT_XMAS) {
+        led_effect = 0;
+    }
+
+    led_color_mode = (stored_config & 0x0000FF00) >> 8;
+    if (led_color_mode > LED_COLOR_MODE_PULSE) {
+        led_color_mode = 0;
+    }
+
+    led_bright = (stored_config & 0x00FF0000) >> 16;
+    if (led_bright > LED_WS2812_COLOR_MAX) {
+        led_bright = LED_WS2812_COLOR_MAX;
+    }
+}
+
+/**
+ * @brief Save configurations on flash.
+ */
+static void save_config(void)
+{
+    static uint32_t timeshot = 0;
+    static uint64_t last_config = 0;
+    uint64_t new_config = ((uint32_t)led_effect) | (((uint32_t)led_color_mode) << 8) | (((uint32_t)led_bright) << 16);
+
+    if (last_config != new_config) {
+        last_config = new_config;
+        timeshot = HAL_GetTick();
+    }
+
+    uint64_t stored_config = *((uint64_t *)(LED_CONFIG_ADDR));
+    if (new_config != stored_config && (HAL_GetTick() - timeshot) >= LED_CONFIG_SAVE_DELAY) {
+        FLASH_EraseInitTypeDef erase_init = {
+            .TypeErase = FLASH_TYPEERASE_PAGES,
+            .Banks = FLASH_BANK_1,
+            .NbPages = 1,
+            .PageAddress = LED_CONFIG_ADDR - (LED_CONFIG_ADDR % FLASH_PAGE_SIZE),
+        };
+
+        HAL_FLASH_Unlock();
+
+        uint32_t dummy_error;
+        HAL_FLASHEx_Erase(&erase_init, &dummy_error);
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, LED_CONFIG_ADDR, new_config);
+
+        HAL_FLASH_Lock();
+    }
+}
+
 /** Public functions ---------------------------------------------- */
 /**
  * @brief Sets up LED strip application.
@@ -389,6 +450,8 @@ void led_setup(void)
     gpio_init.Pull = GPIO_PULLUP;
     gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
     HAL_GPIO_Init(GPIOB, &gpio_init);
+
+    load_config();
 }
 
 /**
@@ -464,6 +527,8 @@ void led_update(void) {
             led_bright = 0;
         }
     }
+
+    save_config();
 
     switch (led_effect) {
         case LED_EFFECT_OFF:
