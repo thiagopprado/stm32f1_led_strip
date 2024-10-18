@@ -26,7 +26,7 @@
 #define KEY_HOLD_COUNTER            200
 
 #define LED_CONFIG_ADDR             0x0800FC00
-#define LED_CONFIG_SAVE_DELAY       2000
+#define LED_CONFIG_SAVE_DELAY       20000
 
 /** Types --------------------------------------------------------- */
 typedef enum {
