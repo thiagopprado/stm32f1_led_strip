@@ -80,6 +80,7 @@ typedef enum {
     LED_EFFECT_WHITE,
     LED_EFFECT_RED_BLUE,
     LED_EFFECT_XMAS,
+    LED_EFFECT_NR,
 } led_effect_t;
 
 /** Variables ----------------------------------------------------- */
@@ -151,7 +152,7 @@ static void led_effect_color(led_effect_t effect) {
     }
 
     for (i = 0; i < LED_WS2812_NR; i++) {
-        switch (led_effect) {
+        switch (effect) {
             case LED_EFFECT_OFF: {
                 led_color[i] = 0;
                 break;
@@ -385,7 +386,7 @@ static void load_config(void)
     uint64_t stored_config = *((uint64_t *)(LED_CONFIG_ADDR));
 
     led_effect = stored_config & 0x000000FF;
-    if (led_effect > LED_EFFECT_XMAS) {
+    if (led_effect >= LED_EFFECT_NR) {
         led_effect = 0;
     }
 
@@ -487,20 +488,18 @@ void led_update(void) {
     last_key_state = key_state;
 
     if (key_pressed == INFRARED_KEY_RIGHT && ir_read_cooldown == 0) {
-        if (led_effect == LED_EFFECT_XMAS) {
+        led_effect++;
+        if (led_effect == LED_EFFECT_NR) {
             led_effect = LED_EFFECT_OFF;
-        } else {
-            led_effect++;
         }
 
         ir_read_cooldown = LED_CONTROL_DELAY_FAST;
 
     } else if (key_pressed == INFRARED_KEY_LEFT && ir_read_cooldown == 0) {
         if (led_effect == LED_EFFECT_OFF) {
-            led_effect = LED_EFFECT_XMAS;
-        } else {
-            led_effect--;
+            led_effect = LED_EFFECT_NR;
         }
+        led_effect--;
 
         ir_read_cooldown = LED_CONTROL_DELAY_FAST;
 
@@ -546,6 +545,9 @@ void led_update(void) {
         }
         case LED_EFFECT_XMAS: {
             led_effect_xmas();
+            break;
+        }
+        case LED_EFFECT_NR: {
             break;
         }
     }
